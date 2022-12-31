@@ -54,5 +54,4 @@ class TestSphinx(unittest.TestCase):
                 \---------/
             """))
 
-        self.build()
         self.build(builder="man")

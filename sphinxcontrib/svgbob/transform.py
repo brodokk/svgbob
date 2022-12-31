@@ -1,13 +1,10 @@
-import hashlib
-import os
-import pathlib
 import typing
 
 import sphinx.transforms
-from docutils.nodes import image, inline, generated, literal, literal_block
+from docutils.nodes import literal_block, raw
 
 from ._svgbob import to_svg
-from .node import svgbob
+from .node import svgbob, Div
 
 
 class SvgbobToImageTransform(sphinx.transforms.SphinxTransform):
@@ -20,18 +17,9 @@ class SvgbobToImageTransform(sphinx.transforms.SphinxTransform):
         return 'image/svg+xml' in self.app.builder.supported_image_types
 
     def apply(self, **kwargs: typing.Any) -> None:
-        source = os.path.dirname(self.document["source"])
         for node in self.document.traverse(svgbob):
 
             if self.builder_supports_svg():
-                img = image()
-                img["svgbob"] = node
-                img["alt"] = node["code"]
-                if "align" in node:
-                    img["align"] = node["align"]
-                if "class" in node:
-                    img["class"] = node["class"]
-
                 options = {
                     "font_size": node["options"].get("font-size"),
                     "font_family": node["options"].get("font-family"),
@@ -41,13 +29,19 @@ class SvgbobToImageTransform(sphinx.transforms.SphinxTransform):
                     "stroke_width": node["options"].get("stroke-width"),
                     "scale": node["options"].get("scale"),
                 }
+                svg = self.render(node, options)
+                svg_node = raw('', svg, format='html')
 
-                out = self.render(node, options)
-                img["uri"] = os.path.relpath(out, source)
-                node.replace_self(img)
+                container_svg_node = Div()
+                container_svg_node += svg_node
+
+                if "align" in node:
+                    container_svg_node["style"] = f"text-align: {node['align']}"
+                if "classes" in node:
+                    container_svg_node["classes"] = node["classes"]
+                node.replace_self(container_svg_node)
 
             else:
-                contents = node["code"].split("\n")
                 rawnode = literal_block(node["code"], node["code"])
                 node.replace_self(rawnode)
 
@@ -55,17 +49,5 @@ class SvgbobToImageTransform(sphinx.transforms.SphinxTransform):
         self,
         node: svgbob,
         options: typing.Dict[str, object],
-        prefix: str = "svgbob",
     ) -> str:
-        builder = self.app.builder
-
-        hash = hashlib.sha1(node["code"].encode()).hexdigest()
-        fname = "{}-{}.svg".format(prefix, hash)
-        outfile = os.path.join(builder.outdir, builder.imagedir, fname)
-
-        if not os.path.exists(outfile):
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            with open(outfile, mode="w", encoding="utf-8") as f:
-                f.write(to_svg(node["code"], **options)) # type: ignore
-
-        return outfile
+        return to_svg(node["code"], **options)
